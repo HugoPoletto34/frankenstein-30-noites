@@ -264,10 +264,11 @@
       placeholder: "Pode ser feio. Pode ser uma linha. Aqui não tem certo.",
     });
     letterBox.addEventListener("input", function () {
-      state.logs[session.id] = Object.assign({}, getLog(session.id), { letter: letterBox.value });
+      state.logs[session.id] = Object.assign({}, getLog(session.id), {
+        letter: letterBox.value,
+      });
       persist();
     });
-    letterBox.addEventListener("blur", render);
     body.push(letterBox);
 
     const quoteBox = el("input", {
@@ -276,10 +277,11 @@
       placeholder: "Frase da página que grudou, se houver",
     });
     quoteBox.addEventListener("input", function () {
-      state.logs[session.id] = Object.assign({}, getLog(session.id), { quote: quoteBox.value });
+      state.logs[session.id] = Object.assign({}, getLog(session.id), {
+        quote: quoteBox.value,
+      });
       persist();
     });
-    quoteBox.addEventListener("blur", render);
     body.push(quoteBox);
 
     if (showReply) {
