@@ -1,5 +1,7 @@
 (function () {
-  const STORAGE_KEY = "frankenstein-30-noites-v1";
+  const STORAGE_KEY = "frankenstein-30-noites-v2";
+  const STORAGE_KEY_V1 = "frankenstein-30-noites-v1";
+  const STORAGE_BACKUP = "frankenstein-30-noites-v2-bak";
   const WEEKDAYS = ["dom.", "seg.", "ter.", "qua.", "qui.", "sex.", "sáb."];
   const MONTHS = [
     "jan", "fev", "mar", "abr", "mai", "jun",
@@ -57,9 +59,9 @@
     return toIso(d);
   }
 
-  function loadState() {
+  function readStorage(key) {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(key);
       if (!raw) return null;
       return JSON.parse(raw);
     } catch (e) {
@@ -67,8 +69,16 @@
     }
   }
 
-  function saveState(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  function writeStorage(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  function loadState() {
+    return (
+      readStorage(STORAGE_KEY) ||
+      readStorage(STORAGE_BACKUP) ||
+      readStorage(STORAGE_KEY_V1)
+    );
   }
 
   const saved = loadState() || {};
@@ -76,11 +86,112 @@
     startDate: saved.startDate || todayIso(),
     logs: saved.logs || {},
     openId: saved.openId || "d01",
+    savedAt: saved.savedAt || null,
   };
+  if (saved && saved.logs) persist();
+
+  let renderTimer = null;
 
   function persist() {
-    saveState(state);
+    state.savedAt = new Date().toISOString();
+    try {
+      writeStorage(STORAGE_KEY, state);
+      writeStorage(STORAGE_BACKUP, state);
+    } catch (err) {
+      try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (ignored) {}
+    }
   }
+
+  function persistAndRefresh(immediate) {
+    persist();
+    if (immediate) {
+      clearTimeout(renderTimer);
+      render();
+      return;
+    }
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(function () {
+      render();
+    }, 400);
+  }
+
+  function snapshotFocus() {
+    const node = document.activeElement;
+    if (!node || !node.getAttribute) return null;
+    const field = node.getAttribute("data-field");
+    if (!field) return null;
+    return {
+      field: field,
+      start: node.selectionStart,
+      end: node.selectionEnd,
+      scroll: node.scrollTop,
+    };
+  }
+
+  function restoreFocus(snap) {
+    if (!snap) return;
+    const node = document.querySelector("[data-field='" + snap.field + "']");
+    if (!node) return;
+    node.focus();
+    if (typeof node.setSelectionRange === "function" && snap.start != null) {
+      node.setSelectionRange(snap.start, snap.end);
+    }
+    if (snap.scroll != null) node.scrollTop = snap.scroll;
+  }
+
+  function formatSavedAt(iso) {
+    if (!iso) return "ainda não salvou";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "salvo neste aparelho";
+    return (
+      "salvo às " +
+      pad(d.getHours()) +
+      ":" +
+      pad(d.getMinutes())
+    );
+  }
+
+  function exportCaderno() {
+    persist();
+    const blob = new Blob([JSON.stringify(state, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "frankenstein-caderno.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 500);
+  }
+
+  function importCaderno(file) {
+    const reader = new FileReader();
+    reader.onload = function () {
+      try {
+        const data = JSON.parse(String(reader.result || ""));
+        if (!data || typeof data !== "object") throw new Error("arquivo inválido");
+        state.startDate = data.startDate || state.startDate;
+        state.logs = data.logs || {};
+        state.openId = data.openId || "d01";
+        persistAndRefresh(true);
+      } catch (err) {
+        alert("Não consegui ler esse caderno. Use o arquivo JSON baixado daqui.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  window.addEventListener("pagehide", persist);
+  window.addEventListener("beforeunload", persist);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") persist();
+  });
 
   function getLog(id) {
     const cur = state.logs[id];
@@ -262,12 +373,13 @@
     const letterBox = el("textarea", {
       value: log.letter,
       placeholder: "Pode ser feio. Pode ser uma linha. Aqui não tem certo.",
+      "data-field": "letter",
     });
     letterBox.addEventListener("input", function () {
       state.logs[session.id] = Object.assign({}, getLog(session.id), {
         letter: letterBox.value,
       });
-      persist();
+      persistAndRefresh(false);
     });
     body.push(letterBox);
 
@@ -275,12 +387,13 @@
       type: "text",
       value: log.quote,
       placeholder: "Frase da página que grudou, se houver",
+      "data-field": "quote",
     });
     quoteBox.addEventListener("input", function () {
       state.logs[session.id] = Object.assign({}, getLog(session.id), {
         quote: quoteBox.value,
       });
-      persist();
+      persistAndRefresh(false);
     });
     body.push(quoteBox);
 
@@ -329,7 +442,7 @@
       el("h2", { text: "Sua correspondência com o livro" }),
       el("p", {
         class: "hint",
-        text: "Atenção conferida e o que você pensou depois. O diálogo fica neste aparelho.",
+        text: "O que você escreveu e marcou fica guardado. Fecha o site e abre de novo: o caderno continua aqui.",
       }),
       entries.map(function (item) {
         return el(
@@ -350,6 +463,7 @@
   }
 
   function render() {
+    const focus = snapshotFocus();
     const tIndex = todayIndex();
     const reading = SESSIONS.filter(function (s) { return s.kind === "read"; });
     const doneCount = reading.filter(function (s) { return getLog(s.id).done; }).length;
@@ -390,6 +504,36 @@
         class: "lede",
         text: "Sem introdução: o livro começa na Carta I. Cada seção tem duas perguntas para saber se você estava na página, e uma para pensar o que leu. As seções da frente ficam fechadas.",
       }),
+      el("div", { class: "save-bar" },
+        el("b", { text: formatSavedAt(state.savedAt) }),
+        el("span", { text: " · cartas, atenção e noites ficam neste navegador" }),
+        el("button", {
+          class: "btn ghost",
+          type: "button",
+          text: "Baixar caderno",
+          onClick: exportCaderno,
+        }),
+        (function () {
+          const file = el("input", {
+            type: "file",
+            accept: "application/json,.json",
+            style: "display:none",
+          });
+          file.addEventListener("change", function () {
+            if (file.files && file.files[0]) importCaderno(file.files[0]);
+            file.value = "";
+          });
+          const btn = el("button", {
+            class: "btn ghost",
+            type: "button",
+            text: "Trazer caderno",
+            onClick: function () {
+              file.click();
+            },
+          });
+          return el("span", null, file, btn);
+        })()
+      ),
       el("div", { class: "stats" },
         el("div", { class: "stat" }, el("b", { text: "Carta I" }), el("span", { text: "ponto de partida" })),
         el("div", { class: "stat ice" },
@@ -516,12 +660,13 @@
 
     root.appendChild(el("p", {
       class: "foot",
-      text: "27 noites de leitura, 3 folgas de memória. Começa na Carta I. Progresso salvo só neste navegador. Perguntas sem spoiler até o dia abrir.",
+      text: "27 noites de leitura, 3 folgas de memória. Começa na Carta I. O caderno (respostas, reflexões, noites lidas) salva sozinho neste navegador, como no plano do Cursor. Perguntas sem spoiler até o dia abrir.",
     }));
 
     const app = document.getElementById("app");
     app.innerHTML = "";
     app.appendChild(root);
+    restoreFocus(focus);
   }
 
   render();

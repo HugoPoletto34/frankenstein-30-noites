@@ -300,6 +300,30 @@ hr.sep {
   margin: 16px 0;
 }
 
+.save-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  margin: 8px 0 18px;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.save-bar input[type="file"] {
+  display: none;
+}
+
+.save-bar .btn {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.save-bar b {
+  color: var(--ok);
+  font-weight: 600;
+}
+
 .foot {
   margin-top: 40px;
   color: var(--faint);
