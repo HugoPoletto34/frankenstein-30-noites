@@ -8,9 +8,11 @@ O livro começa na **Carta I** (sem introdução). São 27 noites de leitura, 3 
 
 O site é estático e publica no GitHub Pages a cada push em `main`, pelo workflow em `.github/workflows/pages.yml`.
 
-Endereço, depois da primeira publicação:
+Está no ar em:
 
-`https://<seu-usuario>.github.io/frankenstein-30-noites/`
+https://hugopoletto34.github.io/frankenstein-30-noites/
+
+Repositório: https://github.com/HugoPoletto34/frankenstein-30-noites
 
 ## Localmente
 
